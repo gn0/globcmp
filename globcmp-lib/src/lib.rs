@@ -140,6 +140,7 @@ where
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Pattern {
+    original: String,
     tokens: Vec<Token>,
 }
 
@@ -161,6 +162,10 @@ impl Pattern {
             .is_more_specific_than(&PatternIterator::from(
                 &mut other_tokens.into_iter(),
             ))
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.original.as_str()
     }
 }
 
@@ -259,7 +264,10 @@ impl FromStr for Pattern {
             prev_token = Some(token);
         }
 
-        Ok(Self { tokens })
+        Ok(Self {
+            original: value.to_string(),
+            tokens,
+        })
     }
 }
 
@@ -271,7 +279,10 @@ mod tests {
     fn tokenize_empty_str() {
         assert_eq!(
             Pattern::from_str(""),
-            Ok(Pattern { tokens: Vec::new() })
+            Ok(Pattern {
+                original: String::new(),
+                tokens: Vec::new()
+            })
         );
     }
 
@@ -280,6 +291,7 @@ mod tests {
         assert_eq!(
             Pattern::from_str("foo/bar"),
             Ok(Pattern {
+                original: "foo/bar".to_string(),
                 tokens: vec![
                     Token::Char('f'),
                     Token::Char('o'),
@@ -298,6 +310,7 @@ mod tests {
         assert_eq!(
             Pattern::from_str("foo/b?r"),
             Ok(Pattern {
+                original: "foo/b?r".to_string(),
                 tokens: vec![
                     Token::Char('f'),
                     Token::Char('o'),
@@ -316,6 +329,7 @@ mod tests {
         assert_eq!(
             Pattern::from_str("foo/b*r"),
             Ok(Pattern {
+                original: "foo/b*r".to_string(),
                 tokens: vec![
                     Token::Char('f'),
                     Token::Char('o'),
@@ -331,6 +345,7 @@ mod tests {
         assert_eq!(
             Pattern::from_str("foo/*b*r*"),
             Ok(Pattern {
+                original: "foo/*b*r*".to_string(),
                 tokens: vec![
                     Token::Char('f'),
                     Token::Char('o'),
@@ -351,6 +366,7 @@ mod tests {
         assert_eq!(
             Pattern::from_str("foo/ba[rz]"),
             Ok(Pattern {
+                original: "foo/ba[rz]".to_string(),
                 tokens: vec![
                     Token::Char('f'),
                     Token::Char('o'),
@@ -401,6 +417,7 @@ mod tests {
         assert_eq!(
             Pattern::from_str("foo/**/baz"),
             Ok(Pattern {
+                original: "foo/**/baz".to_string(),
                 tokens: vec![
                     Token::Char('f'),
                     Token::Char('o'),
