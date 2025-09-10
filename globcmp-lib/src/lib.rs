@@ -1,4 +1,8 @@
+use multipeek::{multipeek, MultiPeek};
 use std::{fmt, str::FromStr};
+
+const STACK_RED_ZONE: usize = 32 * 1024;
+const STACK_GROW_SIZE: usize = 1024 * 1024;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum Token {
@@ -38,12 +42,12 @@ impl fmt::Display for PatternError {
 
 impl std::error::Error for PatternError {}
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 struct PatternIterator<'a, T>
 where
     T: Iterator<Item = Token> + Clone,
 {
-    tokens: &'a mut T,
+    tokens: &'a MultiPeek<T>,
 }
 
 impl<'a, T> PatternIterator<'a, T>
@@ -55,85 +59,168 @@ where
     ///
     /// Use [`TokenizedPattern::from_str`] instead to create a
     /// `TokenizedPattern` from a string.
-    fn from(tokens: &'a mut T) -> Self {
+    fn from(tokens: &'a MultiPeek<T>) -> Self {
         Self { tokens }
     }
 
     fn is_more_specific_than(&self, other: &Self) -> bool {
-        let mut a_iter = self.tokens.clone().peekable();
-        let mut b_iter = other.tokens.clone().peekable();
+        let mut a_iter = self.tokens.clone();
+        let mut b_iter = other.tokens.clone();
 
-        let a_token = a_iter.next();
-        let b_token = b_iter.next();
+        fn recur_moving_a<T>(
+            a_iter: &MultiPeek<T>,
+            b_iter: &MultiPeek<T>,
+        ) -> bool
+        where
+            T: Iterator<Item = Token> + Clone,
+        {
+            let mut a_clone = a_iter.clone();
 
-        let mut a_iter_clone = self.tokens.clone();
-        let _ = a_iter_clone.next();
-        let mut move_a = || {
-            PatternIterator::from(&mut a_iter_clone)
-                .is_more_specific_than(other)
-        };
+            a_clone.next();
 
-        let mut b_iter_clone = other.tokens.clone();
-        let _ = b_iter_clone.next();
-        let mut move_b = || {
-            self.is_more_specific_than(&PatternIterator::from(
-                &mut b_iter_clone,
-            ))
-        };
+            PatternIterator::from(&a_clone)
+                .is_more_specific_than(&PatternIterator::from(b_iter))
+        }
 
-        let mut a_iter_clone = self.tokens.clone();
-        let mut b_iter_clone = other.tokens.clone();
-        let _ = a_iter_clone.next();
-        let _ = b_iter_clone.next();
-        let mut move_both = || {
-            PatternIterator::from(&mut a_iter_clone)
-                .is_more_specific_than(&PatternIterator::from(
-                    &mut b_iter_clone,
-                ))
-        };
+        fn recur_moving_b<T>(
+            a_iter: &MultiPeek<T>,
+            b_iter: &MultiPeek<T>,
+        ) -> bool
+        where
+            T: Iterator<Item = Token> + Clone,
+        {
+            let mut b_clone = b_iter.clone();
 
-        use Token::*;
+            b_clone.next();
 
-        // TODO Don't recurse unless there are multiple possible ways
-        // forward.
-        match (a_token, b_token) {
-            (None, None) => true,
-            (None, Some(AnyChars)) => move_b(),
-            (None, Some(_)) | (Some(_), None) => false,
-            (Some(AnyChars), Some(AnyChars))
-            | (Some(AnyRecur), Some(AnyRecur)) => {
-                move_a() || move_b() || move_both()
-            }
-            (Some(Slash), Some(Slash)) => {
-                match (a_iter.peek(), b_iter.peek()) {
-                    (Some(&AnyRecur), Some(&AnyRecur)) => {
-                        move_a() || move_b() || move_both()
-                    }
-                    (Some(&AnyRecur), _) => move_a(),
-                    (_, Some(&AnyRecur)) => move_b(),
-                    _ => move_both(),
+            PatternIterator::from(a_iter)
+                .is_more_specific_than(&PatternIterator::from(&b_clone))
+        }
+
+        fn recur_moving_both<T>(
+            a_iter: &MultiPeek<T>,
+            b_iter: &MultiPeek<T>,
+        ) -> bool
+        where
+            T: Iterator<Item = Token> + Clone,
+        {
+            let mut a_clone = a_iter.clone();
+            let mut b_clone = b_iter.clone();
+
+            a_clone.next();
+            b_clone.next();
+
+            PatternIterator::from(&a_clone)
+                .is_more_specific_than(&PatternIterator::from(&b_clone))
+        }
+
+        loop {
+            use Token::*;
+
+            let a_token = a_iter.peek();
+            let b_token = b_iter.peek();
+
+            match (a_token, b_token) {
+                (None, None) => return true,
+                (None, Some(AnyChars)) => {
+                    b_iter.next();
                 }
+                (None, Some(_)) | (Some(_), None) => return false,
+                (Some(AnyChars), Some(AnyChars))
+                | (Some(AnyRecur), Some(AnyRecur)) => {
+                    return stacker::maybe_grow(
+                        STACK_RED_ZONE,
+                        STACK_GROW_SIZE,
+                        || {
+                            recur_moving_a(&a_iter, &b_iter)
+                                || recur_moving_b(&a_iter, &b_iter)
+                                || recur_moving_both(&a_iter, &b_iter)
+                        },
+                    );
+                }
+                (Some(Slash), Some(Slash)) => {
+                    let a_next = a_iter.peek_nth(1);
+                    let b_next = b_iter.peek_nth(1);
+
+                    match (a_next, b_next) {
+                        (Some(AnyRecur), Some(AnyRecur)) => {
+                            return stacker::maybe_grow(
+                                STACK_RED_ZONE,
+                                STACK_GROW_SIZE,
+                                || {
+                                    recur_moving_a(&a_iter, &b_iter)
+                                        || recur_moving_b(
+                                            &a_iter, &b_iter,
+                                        )
+                                        || recur_moving_both(
+                                            &a_iter, &b_iter,
+                                        )
+                                },
+                            );
+                        }
+                        (Some(AnyRecur), _) => {
+                            a_iter.next();
+                        }
+                        (_, Some(AnyRecur)) => {
+                            b_iter.next();
+                        }
+                        _ => {
+                            a_iter.next();
+                            b_iter.next();
+                        }
+                    }
+                }
+                (Some(a), Some(b)) if a == b => {
+                    a_iter.next();
+                    b_iter.next();
+                }
+                (Some(AnyChar), Some(CharClass(_)))
+                | (Some(AnyChar), Some(Char(_)))
+                | (Some(CharClass(_)), Some(Char(_))) => return false,
+                (Some(CharClass(_)), Some(AnyChar))
+                | (Some(Char(_)), Some(AnyChar)) => {
+                    a_iter.next();
+                    b_iter.next();
+                }
+                (Some(Char(a)), Some(CharClass(bs))) => {
+                    if !bs.contains(a) {
+                        return false;
+                    }
+
+                    a_iter.next();
+                    b_iter.next();
+                }
+                (Some(AnyChars), Some(_))
+                | (Some(AnyRecur), Some(_)) => return false,
+                (Some(Slash), Some(AnyChars)) => {
+                    b_iter.next();
+                }
+                (Some(_), Some(AnyChars)) => {
+                    return stacker::maybe_grow(
+                        STACK_RED_ZONE,
+                        STACK_GROW_SIZE,
+                        || {
+                            recur_moving_a(&a_iter, &b_iter)
+                                || recur_moving_b(&a_iter, &b_iter)
+                                || recur_moving_both(&a_iter, &b_iter)
+                        },
+                    );
+                }
+                (Some(Slash), Some(AnyRecur)) => {
+                    return stacker::maybe_grow(
+                        STACK_RED_ZONE,
+                        STACK_GROW_SIZE,
+                        || {
+                            recur_moving_a(&a_iter, &b_iter)
+                                || recur_moving_b(&a_iter, &b_iter)
+                        },
+                    );
+                }
+                (Some(_), Some(AnyRecur)) => {
+                    a_iter.next();
+                }
+                (Some(_), Some(_)) => return false,
             }
-            (Some(a), Some(b)) if a == b => move_both(),
-            (Some(AnyChar), Some(CharClass(_)))
-            | (Some(AnyChar), Some(Char(_)))
-            | (Some(CharClass(_)), Some(Char(_))) => false,
-            (Some(CharClass(_)), Some(AnyChar))
-            | (Some(Char(_)), Some(AnyChar)) => move_both(),
-            (Some(Char(a)), Some(CharClass(ref bs))) => {
-                bs.contains(&a) && move_both()
-            }
-            (Some(AnyChars), Some(_)) | (Some(AnyRecur), Some(_)) => {
-                false
-            }
-            (Some(Slash), Some(AnyChars)) => move_b(),
-            (Some(_), Some(AnyChars)) => {
-                move_a() || move_b() || move_both()
-            }
-            (Some(Slash), Some(AnyRecur)) => move_a() || move_b(),
-            // TODO Move until next `/` in `a` instead.
-            (Some(_), Some(AnyRecur)) => move_a(),
-            (Some(_), Some(_)) => false,
         }
     }
 }
@@ -158,10 +245,10 @@ impl Pattern {
         let self_tokens = self.tokens.to_vec();
         let other_tokens = other.tokens.to_vec();
 
-        PatternIterator::from(&mut self_tokens.into_iter())
-            .is_more_specific_than(&PatternIterator::from(
-                &mut other_tokens.into_iter(),
-            ))
+        PatternIterator::from(&multipeek(self_tokens))
+            .is_more_specific_than(&PatternIterator::from(&multipeek(
+                other_tokens,
+            )))
     }
 
     pub fn as_str(&self) -> &str {
