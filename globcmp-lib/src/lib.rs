@@ -1,5 +1,5 @@
 use multipeek::{multipeek, MultiPeek};
-use std::{fmt, str::FromStr};
+use std::{fmt, ops::Range, str::FromStr};
 
 #[cfg(feature = "stack-safe")]
 const STACK_RED_ZONE: usize = 32 * 1024;
@@ -295,7 +295,7 @@ impl FromStr for Pattern {
     /// TODO with assert!(...is_ok()) and assert!(...is_err()).
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let mut tokens = Vec::new();
-        let mut class_buf = Vec::new();
+        let mut class_buf = Vec::<char>::new();
         let mut in_char_class = false;
         let mut pending_star = false;
 
@@ -331,7 +331,47 @@ impl FromStr for Pattern {
                         return Err(Self::Err::EmptyCharClass);
                     } else {
                         in_char_class = false;
-                        Token::CharClass(std::mem::take(&mut class_buf))
+
+                        let mut buf_iter = multipeek(&class_buf);
+                        let mut char_class =
+                            Vec::with_capacity(class_buf.len());
+                        let mut prev = None;
+
+                        while let Some(&c) = buf_iter.next() {
+                            if c == '-'
+                                && let Some(c_prev) = prev
+                                && let Some(&&c_next) = buf_iter.peek()
+                            {
+                                let range = Range {
+                                    start: c_prev,
+                                    end: c_next,
+                                };
+
+                                if range.is_empty() {
+                                    // Remove `c_prev` which we have
+                                    // pushed to `char_class` in the
+                                    // previous iteration.
+                                    char_class.pop();
+
+                                    // Skip `c_next` in the next
+                                    // iteration.
+                                    buf_iter.next();
+                                } else {
+                                    // Skip because `c_prev` was already
+                                    // pushed to `char_class` in the
+                                    // previous iteration.
+                                    char_class.extend(range.skip(1));
+                                }
+                            } else {
+                                char_class.push(c);
+                            }
+
+                            prev = Some(c);
+                        }
+
+                        Token::CharClass(std::mem::take(
+                            &mut char_class,
+                        ))
                     }
                 }
                 _ => {
@@ -487,6 +527,75 @@ mod tests {
                     Token::Char('b'),
                     Token::Char('a'),
                     Token::CharClass(vec!['r', 'z']),
+                ]
+            })
+        );
+
+        let mut chars = vec!['a'];
+        chars.extend('p'..='z');
+
+        assert_eq!(
+            Pattern::from_str("foo/ba[ap-z]"),
+            Ok(Pattern {
+                original: "foo/ba[ap-z]".to_string(),
+                tokens: vec![
+                    Token::Char('f'),
+                    Token::Char('o'),
+                    Token::Char('o'),
+                    Token::Slash,
+                    Token::Char('b'),
+                    Token::Char('a'),
+                    Token::CharClass(chars),
+                ]
+            })
+        );
+
+        // `[az-p]` only matches `a` because `z-p` is the empty
+        // interval.
+        assert_eq!(
+            Pattern::from_str("foo/ba[az-p]"),
+            Ok(Pattern {
+                original: "foo/ba[az-p]".to_string(),
+                tokens: vec![
+                    Token::Char('f'),
+                    Token::Char('o'),
+                    Token::Char('o'),
+                    Token::Slash,
+                    Token::Char('b'),
+                    Token::Char('a'),
+                    Token::CharClass(vec!['a']),
+                ]
+            })
+        );
+
+        assert_eq!(
+            Pattern::from_str("foo/ba[a-]"),
+            Ok(Pattern {
+                original: "foo/ba[a-]".to_string(),
+                tokens: vec![
+                    Token::Char('f'),
+                    Token::Char('o'),
+                    Token::Char('o'),
+                    Token::Slash,
+                    Token::Char('b'),
+                    Token::Char('a'),
+                    Token::CharClass(vec!['a', '-']),
+                ]
+            })
+        );
+
+        assert_eq!(
+            Pattern::from_str("foo/ba[-a]"),
+            Ok(Pattern {
+                original: "foo/ba[-a]".to_string(),
+                tokens: vec![
+                    Token::Char('f'),
+                    Token::Char('o'),
+                    Token::Char('o'),
+                    Token::Slash,
+                    Token::Char('b'),
+                    Token::Char('a'),
+                    Token::CharClass(vec!['-', 'a']),
                 ]
             })
         );
@@ -716,6 +825,9 @@ mod tests {
         more_specific!("foo/bar", "foo/ba[rz]");
         more_specific!("foo/ba[rz]", "foo/ba?");
         more_specific!("foo/ba[rz]", "foo/ba*");
+        more_specific!("foo/bar", "foo/ba[p-z]");
+        more_specific!("foo/ba[p-z]", "foo/ba?");
+        more_specific!("foo/ba[p-z]", "foo/ba*");
         more_specific!("foo/ba?", "foo/ba*");
 
         // Wildcard placement in the filename.
