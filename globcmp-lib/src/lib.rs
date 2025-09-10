@@ -45,14 +45,14 @@ impl fmt::Display for PatternError {
 impl std::error::Error for PatternError {}
 
 #[derive(Debug)]
-struct PatternIterator<'a, T>
+struct PatternIterator<T>
 where
     T: Iterator<Item = Token> + Clone,
 {
-    tokens: &'a MultiPeek<T>,
+    tokens: MultiPeek<T>,
 }
 
-impl<'a, T> PatternIterator<'a, T>
+impl<T> PatternIterator<T>
 where
     T: Iterator<Item = Token> + Clone,
 {
@@ -61,13 +61,13 @@ where
     ///
     /// Use [`TokenizedPattern::from_str`] instead to create a
     /// `TokenizedPattern` from a string.
-    fn from(tokens: &'a MultiPeek<T>) -> Self {
+    fn from(tokens: MultiPeek<T>) -> Self {
         Self { tokens }
     }
 
-    fn is_more_specific_than(&self, other: &Self) -> bool {
-        let mut a_iter = self.tokens.clone();
-        let mut b_iter = other.tokens.clone();
+    fn is_more_specific_than(self, other: Self) -> bool {
+        let mut a_iter = self.tokens;
+        let mut b_iter = other.tokens;
 
         fn recur_moving_a<T>(
             a_iter: &MultiPeek<T>,
@@ -77,11 +77,12 @@ where
             T: Iterator<Item = Token> + Clone,
         {
             let mut a_clone = a_iter.clone();
+            let b_clone = b_iter.clone();
 
             a_clone.next();
 
-            PatternIterator::from(&a_clone)
-                .is_more_specific_than(&PatternIterator::from(b_iter))
+            PatternIterator::from(a_clone)
+                .is_more_specific_than(PatternIterator::from(b_clone))
         }
 
         fn recur_moving_b<T>(
@@ -91,12 +92,13 @@ where
         where
             T: Iterator<Item = Token> + Clone,
         {
+            let a_clone = a_iter.clone();
             let mut b_clone = b_iter.clone();
 
             b_clone.next();
 
-            PatternIterator::from(a_iter)
-                .is_more_specific_than(&PatternIterator::from(&b_clone))
+            PatternIterator::from(a_clone)
+                .is_more_specific_than(PatternIterator::from(b_clone))
         }
 
         fn recur_moving_both<T>(
@@ -112,8 +114,8 @@ where
             a_clone.next();
             b_clone.next();
 
-            PatternIterator::from(&a_clone)
-                .is_more_specific_than(&PatternIterator::from(&b_clone))
+            PatternIterator::from(a_clone)
+                .is_more_specific_than(PatternIterator::from(b_clone))
         }
 
         loop {
@@ -266,8 +268,8 @@ impl Pattern {
         let self_tokens = self.tokens.to_vec();
         let other_tokens = other.tokens.to_vec();
 
-        PatternIterator::from(&multipeek(self_tokens))
-            .is_more_specific_than(&PatternIterator::from(&multipeek(
+        PatternIterator::from(multipeek(self_tokens))
+            .is_more_specific_than(PatternIterator::from(multipeek(
                 other_tokens,
             )))
     }
