@@ -10,8 +10,8 @@ license = "LGPL-3.0-only"
 homepage = "https://github.com/gn0/globcmp/tree/main/globcmp-lib"
 repository = "https://github.com/gn0/globcmp/tree/main/globcmp-lib"
 keywords = [
-    "glob", "glob-pattern", "pattern-matching", "shell-style-pattern",
-    "file-pattern-matching", "path-matching", "filesystem-path"
+    "glob", "glob-pattern", "pattern-matching", "path-matching",
+    "filesystem-path"
 ]
 categories = ["filesystem"]
 edition = "2024"

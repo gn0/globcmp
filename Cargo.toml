@@ -10,8 +10,8 @@ readme = "README.md"
 homepage = "https://github.com/gn0/globcmp"
 repository = "https://github.com/gn0/globcmp"
 keywords = [
-    "glob", "glob-pattern", "pattern-matching", "shell-style-pattern",
-    "file-pattern-matching", "path-matching", "filesystem-path"
+    "glob", "glob-pattern", "pattern-matching", "path-matching",
+    "filesystem-path"
 ]
 categories = ["filesystem"]
 edition = "2024"
