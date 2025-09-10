@@ -46,12 +46,24 @@ If you use the [globcmp-lib](https://github.com/gn0/globcmp/tree/main/globcmp-li
 
 ## Usage
 
+### Basics
+
 ```sh
 globcmp 'foo/bar' 'foo/bar'  # Prints: same
 globcmp 'foo/bar' 'foo/b?r'  # Prints: pattern_a
 globcmp 'foo/b*r' 'foo/b?r'  # Prints: pattern_b
 globcmp 'foo/b*r' 'foo/asd'  # Prints: unknown
 ```
+
+### Supported syntax
+
+| Syntax  | Meaning | Example |
+|---------|---------|---------|
+| `?`     | Matches exactly one character within file and directory names. | `foo/b?r` |
+| `*`     | Matches zero or more characters within file and directory names. | `foo/*` |
+| `**`    | Matches zero or more directory levels within the file path. Cannot be preceded or succeeded by any character, except for `/`. | `foo/**/bar` |
+| `[abc]` | Matches exactly one of the characters listed in the square brackets. | `foo/b[abc]r` |
+| `[a-c]` | Matches exactly one of the characters in the interval (inclusive) listed in the square brackets. | `foo/b[a-c]r` |
 
 ## License
 
