@@ -274,6 +274,8 @@ impl Pattern {
             )))
     }
 
+    /// Returns the string representation with which
+    /// [`Pattern::from_str`] was called.
     pub fn as_str(&self) -> &str {
         self.original.as_str()
     }
