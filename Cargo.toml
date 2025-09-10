@@ -1,6 +1,6 @@
 [package]
 name = "globcmp"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 
 [[bin]]
@@ -15,4 +15,4 @@ stack-safe = [ "globcmp-lib/stack-safe" ]
 
 [dependencies]
 clap = { version = "4.5.*", default-features = false, features = ["std", "help", "usage", "error-context", "suggestions", "derive"] }
-globcmp-lib = { version = "0.2.0", path = "globcmp-lib" }
+globcmp-lib = { version = "0.3.0", path = "globcmp-lib" }
