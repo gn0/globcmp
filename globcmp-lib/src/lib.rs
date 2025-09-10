@@ -1,7 +1,9 @@
 use multipeek::{multipeek, MultiPeek};
 use std::{fmt, str::FromStr};
 
+#[cfg(feature = "stack-safe")]
 const STACK_RED_ZONE: usize = 32 * 1024;
+#[cfg(feature = "stack-safe")]
 const STACK_GROW_SIZE: usize = 1024 * 1024;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -128,6 +130,7 @@ where
                 (None, Some(_)) | (Some(_), None) => return false,
                 (Some(AnyChars), Some(AnyChars))
                 | (Some(AnyRecur), Some(AnyRecur)) => {
+                    #[cfg(feature = "stack-safe")]
                     return stacker::maybe_grow(
                         STACK_RED_ZONE,
                         STACK_GROW_SIZE,
@@ -137,6 +140,10 @@ where
                                 || recur_moving_both(&a_iter, &b_iter)
                         },
                     );
+                    #[cfg(not(feature = "stack-safe"))]
+                    return recur_moving_a(&a_iter, &b_iter)
+                        || recur_moving_b(&a_iter, &b_iter)
+                        || recur_moving_both(&a_iter, &b_iter);
                 }
                 (Some(Slash), Some(Slash)) => {
                     let a_next = a_iter.peek_nth(1);
@@ -144,6 +151,7 @@ where
 
                     match (a_next, b_next) {
                         (Some(AnyRecur), Some(AnyRecur)) => {
+                            #[cfg(feature = "stack-safe")]
                             return stacker::maybe_grow(
                                 STACK_RED_ZONE,
                                 STACK_GROW_SIZE,
@@ -157,6 +165,10 @@ where
                                         )
                                 },
                             );
+                            #[cfg(not(feature = "stack-safe"))]
+                            return recur_moving_a(&a_iter, &b_iter)
+                                || recur_moving_b(&a_iter, &b_iter)
+                                || recur_moving_both(&a_iter, &b_iter);
                         }
                         (Some(AnyRecur), _) => {
                             a_iter.next();
@@ -196,6 +208,7 @@ where
                     b_iter.next();
                 }
                 (Some(_), Some(AnyChars)) => {
+                    #[cfg(feature = "stack-safe")]
                     return stacker::maybe_grow(
                         STACK_RED_ZONE,
                         STACK_GROW_SIZE,
@@ -205,8 +218,13 @@ where
                                 || recur_moving_both(&a_iter, &b_iter)
                         },
                     );
+                    #[cfg(not(feature = "stack-safe"))]
+                    return recur_moving_a(&a_iter, &b_iter)
+                        || recur_moving_b(&a_iter, &b_iter)
+                        || recur_moving_both(&a_iter, &b_iter);
                 }
                 (Some(Slash), Some(AnyRecur)) => {
+                    #[cfg(feature = "stack-safe")]
                     return stacker::maybe_grow(
                         STACK_RED_ZONE,
                         STACK_GROW_SIZE,
@@ -215,6 +233,9 @@ where
                                 || recur_moving_b(&a_iter, &b_iter)
                         },
                     );
+                    #[cfg(not(feature = "stack-safe"))]
+                    return recur_moving_a(&a_iter, &b_iter)
+                        || recur_moving_b(&a_iter, &b_iter);
                 }
                 (Some(_), Some(AnyRecur)) => {
                     a_iter.next();
