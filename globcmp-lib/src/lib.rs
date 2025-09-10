@@ -246,6 +246,177 @@ where
             }
         }
     }
+
+    pub fn count_matching_chars<U>(
+        self,
+        path: MultiPeek<U>,
+    ) -> Option<usize>
+    where
+        U: Iterator<Item = char> + Clone,
+    {
+        let mut tokens = self.tokens;
+        let mut path_chars = path;
+
+        fn recur_moving_tokens<T, U>(
+            tokens: &MultiPeek<T>,
+            path_chars: &MultiPeek<U>,
+        ) -> Option<usize>
+        where
+            T: Iterator<Item = Token> + Clone,
+            U: Iterator<Item = char> + Clone,
+        {
+            let mut tokens_clone = tokens.clone();
+            let path_chars_clone = path_chars.clone();
+
+            tokens_clone.next();
+
+            PatternIterator::from(tokens_clone)
+                .count_matching_chars(path_chars_clone)
+        }
+
+        fn recur_moving_path<T, U>(
+            tokens: &MultiPeek<T>,
+            path_chars: &MultiPeek<U>,
+        ) -> Option<usize>
+        where
+            T: Iterator<Item = Token> + Clone,
+            U: Iterator<Item = char> + Clone,
+        {
+            let tokens_clone = tokens.clone();
+            let mut path_chars_clone = path_chars.clone();
+
+            path_chars_clone.next();
+
+            PatternIterator::from(tokens_clone)
+                .count_matching_chars(path_chars_clone)
+        }
+
+        fn recur_moving_both<T, U>(
+            tokens: &MultiPeek<T>,
+            path_chars: &MultiPeek<U>,
+        ) -> Option<usize>
+        where
+            T: Iterator<Item = Token> + Clone,
+            U: Iterator<Item = char> + Clone,
+        {
+            let mut tokens_clone = tokens.clone();
+            let mut path_chars_clone = path_chars.clone();
+
+            tokens_clone.next();
+            path_chars_clone.next();
+
+            PatternIterator::from(tokens_clone)
+                .count_matching_chars(path_chars_clone)
+        }
+
+        let mut count = 0;
+
+        loop {
+            use Token::*;
+
+            let token = tokens.peek();
+            let path_char = path_chars.peek();
+
+            match (token, path_char) {
+                (None, None) => return Some(count),
+                (None, Some(_)) => return None,
+                (Some(Slash), Some('/')) => {
+                    let token_next = tokens.peek_nth(1);
+
+                    if let Some(AnyRecur) = token_next {
+                        tokens.next();
+                    } else {
+                        tokens.next();
+                        path_chars.next();
+                        count += 1;
+                    }
+                }
+                (Some(AnyChars), Some('/'))
+                | (Some(AnyChars), None) => {
+                    tokens.next();
+                }
+                (Some(AnyRecur), Some('/')) => {
+                    #[cfg(feature = "stack-safe")]
+                    let remainder = stacker::maybe_grow(
+                        STACK_RED_ZONE,
+                        STACK_GROW_SIZE,
+                        || {
+                            [
+                                recur_moving_tokens(
+                                    &tokens,
+                                    &path_chars,
+                                ),
+                                recur_moving_path(&tokens, &path_chars),
+                            ]
+                            .into_iter()
+                            .max()
+                        },
+                    )??;
+                    #[cfg(not(feature = "stack-safe"))]
+                    let remainder = [
+                        recur_moving_tokens(&tokens, &path_chars),
+                        recur_moving_path(&tokens, &path_chars),
+                    ]
+                    .into_iter()
+                    .max()??;
+
+                    return Some(count + remainder);
+                }
+                (Some(AnyRecur), Some(_)) => {
+                    path_chars.next();
+                }
+                (Some(AnyChars), Some(_)) => {
+                    #[cfg(feature = "stack-safe")]
+                    let remainder = stacker::maybe_grow(
+                        STACK_RED_ZONE,
+                        STACK_GROW_SIZE,
+                        || {
+                            [
+                                recur_moving_tokens(
+                                    &tokens,
+                                    &path_chars,
+                                ),
+                                recur_moving_path(&tokens, &path_chars),
+                                recur_moving_both(&tokens, &path_chars),
+                            ]
+                            .into_iter()
+                            .max()
+                        },
+                    )??;
+                    #[cfg(not(feature = "stack-safe"))]
+                    let remainder = [
+                        recur_moving_tokens(&tokens, &path_chars),
+                        recur_moving_path(&tokens, &path_chars),
+                        recur_moving_both(&tokens, &path_chars),
+                    ]
+                    .into_iter()
+                    .max()??;
+
+                    return Some(count + remainder);
+                }
+                (Some(_), Some('/')) | (Some(_), None) => return None,
+                (Some(AnyChar), Some(_)) => {
+                    tokens.next();
+                    path_chars.next();
+                    count += 1;
+                }
+                (Some(CharClass(chars)), Some(b)) => {
+                    if !chars.contains(b) {
+                        return None;
+                    }
+                    tokens.next();
+                    path_chars.next();
+                    count += 1;
+                }
+                (Some(Char(a)), Some(b)) if a == b => {
+                    tokens.next();
+                    path_chars.next();
+                    count += 1;
+                }
+                (Some(_), Some(_)) => return None,
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -272,6 +443,52 @@ impl Pattern {
             .is_more_specific_than(PatternIterator::from(multipeek(
                 other_tokens,
             )))
+    }
+
+    /// Counts the number of characters in `path` that are either
+    ///
+    /// 1. matched exactly (e.g., `a`),
+    /// 2. matched by a character class (e.g., `[a-f]`), or
+    /// 3. matched by a single-character wildcard (`?`)
+    ///
+    /// This means that it does not count characters that are matched by
+    /// `*` or `**`.
+    ///
+    /// Returns `None` if the pattern does not match `path`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::str::FromStr;
+    /// use globcmp_lib::Pattern;
+    ///
+    /// let pattern = Pattern::from_str("foo/bar").unwrap();
+    /// let count = pattern.count_matching_chars("foo/bar");
+    /// assert_eq!(count, Some(7));
+    /// ```
+    ///
+    /// ```
+    /// use std::str::FromStr;
+    /// use globcmp_lib::Pattern;
+    ///
+    /// let pattern = Pattern::from_str("foo/*r").unwrap();
+    /// let count = pattern.count_matching_chars("foo/bar");
+    /// assert_eq!(count, Some(5));
+    /// ```
+    ///
+    /// ```
+    /// use std::str::FromStr;
+    /// use globcmp_lib::Pattern;
+    ///
+    /// let pattern = Pattern::from_str("foo/*z").unwrap();
+    /// let count = pattern.count_matching_chars("foo/bar");
+    /// assert!(count.is_none());
+    /// ```
+    pub fn count_matching_chars(&self, path: &str) -> Option<usize> {
+        let self_tokens = self.tokens.to_vec();
+
+        PatternIterator::from(multipeek(self_tokens))
+            .count_matching_chars(multipeek(path.chars()))
     }
 
     /// Returns the string representation with which
@@ -844,5 +1061,44 @@ mod tests {
         unknown_specificity!("foo/ba[rz]", "foo/bax");
         unknown_specificity!("foo/ba?", "foo/baxx");
         unknown_specificity!("foo/*", "foo/bar/*");
+    }
+
+    macro_rules! count_of {
+        ($pattern:expr, $path:expr, $expected:expr) => {
+            let pattern = Pattern::from_str($pattern)
+                .expect("pattern should be valid");
+
+            assert_eq!(pattern.count_matching_chars($path), $expected);
+        };
+    }
+
+    #[test]
+    fn count_of_matching_chars() {
+        count_of!("", "", Some(0));
+        count_of!("*", "bar", Some(0));
+        count_of!("foo", "bar", None);
+        count_of!("f*", "bar", None);
+        count_of!("fo*", "bar", None);
+        count_of!("*o", "bar", None);
+        count_of!("f*o", "bar", None);
+        count_of!("*o*", "bar", None);
+
+        count_of!("foo", "foo", Some(3));
+
+        count_of!("foo*", "foobar", Some(3));
+        count_of!("foo*r", "foobar", Some(4));
+
+        count_of!("foo???", "foobar", Some(6));
+        count_of!("f?o?a?", "foobar", Some(6));
+        count_of!("?o?b?r", "foobar", Some(6));
+        count_of!("foo[a-f][a-f]r", "foobar", Some(6));
+
+        count_of!("foo/*r", "foo/bar", Some(5));
+        count_of!("foo/**/*r", "foo/bar", Some(5));
+
+        count_of!("foo/bar", "foo/bar", Some(7));
+        count_of!("foo/**/foo", "foo/bar", None);
+        count_of!("foo/**/foo", "foo/bar/baz/foo", Some(7));
+        count_of!("foo/bar/baz/foo", "foo/bar/baz/foo", Some(15));
     }
 }
