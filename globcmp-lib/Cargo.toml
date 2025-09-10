@@ -6,6 +6,7 @@ description = """
 Library used by the globcmp crate.
 Provides methods to assess whether one glob pattern matches a file path more closely than another glob pattern does.
 """
+license = "LGPL-3.0-only"
 homepage = "https://github.com/gn0/globcmp/tree/main/globcmp-lib"
 repository = "https://github.com/gn0/globcmp/tree/main/globcmp-lib"
 keywords = [
