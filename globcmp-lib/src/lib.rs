@@ -341,24 +341,18 @@ where
                         STACK_RED_ZONE,
                         STACK_GROW_SIZE,
                         || {
-                            [
-                                recur_moving_tokens(
+                            recur_moving_tokens(&tokens, &path_chars)
+                                .or(recur_moving_path(
                                     &tokens,
                                     &path_chars,
-                                ),
-                                recur_moving_path(&tokens, &path_chars),
-                            ]
-                            .into_iter()
-                            .max()
+                                ))
                         },
-                    )??;
+                    )?;
                     #[cfg(not(feature = "stack-safe"))]
-                    let remainder = [
-                        recur_moving_tokens(&tokens, &path_chars),
-                        recur_moving_path(&tokens, &path_chars),
-                    ]
-                    .into_iter()
-                    .max()??;
+                    let remainder =
+                        recur_moving_tokens(&tokens, &path_chars).or(
+                            recur_moving_path(&tokens, &path_chars),
+                        )?;
 
                     return Some(count + remainder);
                 }
@@ -371,26 +365,25 @@ where
                         STACK_RED_ZONE,
                         STACK_GROW_SIZE,
                         || {
-                            [
-                                recur_moving_tokens(
+                            recur_moving_tokens(&tokens, &path_chars)
+                                .or(recur_moving_path(
                                     &tokens,
                                     &path_chars,
-                                ),
-                                recur_moving_path(&tokens, &path_chars),
-                                recur_moving_both(&tokens, &path_chars),
-                            ]
-                            .into_iter()
-                            .max()
+                                ))
+                                .or(recur_moving_both(
+                                    &tokens,
+                                    &path_chars,
+                                ))
                         },
-                    )??;
+                    )?;
                     #[cfg(not(feature = "stack-safe"))]
-                    let remainder = [
-                        recur_moving_tokens(&tokens, &path_chars),
-                        recur_moving_path(&tokens, &path_chars),
-                        recur_moving_both(&tokens, &path_chars),
-                    ]
-                    .into_iter()
-                    .max()??;
+                    let remainder =
+                        recur_moving_tokens(&tokens, &path_chars)
+                            .or(recur_moving_path(&tokens, &path_chars))
+                            .or(recur_moving_both(
+                                &tokens,
+                                &path_chars,
+                            ))?;
 
                     return Some(count + remainder);
                 }
