@@ -1061,6 +1061,10 @@ mod tests {
         unknown_specificity!("foo/ba[rz]", "foo/bax");
         unknown_specificity!("foo/ba?", "foo/baxx");
         unknown_specificity!("foo/*", "foo/bar/*");
+
+        // Slashes must be matched exactly.
+        unknown_specificity!("foo?bar", "foo/bar");
+        unknown_specificity!("foo*bar", "foo/bar");
     }
 
     macro_rules! count_of {
@@ -1087,6 +1091,8 @@ mod tests {
 
         count_of!("foo*", "foobar", Some(3));
         count_of!("foo*r", "foobar", Some(4));
+        count_of!("f*o*a*", "foobar", Some(3));
+        count_of!("*o*b*r", "foobar", Some(3));
 
         count_of!("foo???", "foobar", Some(6));
         count_of!("f?o?a?", "foobar", Some(6));
@@ -1100,5 +1106,8 @@ mod tests {
         count_of!("foo/**/foo", "foo/bar", None);
         count_of!("foo/**/foo", "foo/bar/baz/foo", Some(7));
         count_of!("foo/bar/baz/foo", "foo/bar/baz/foo", Some(15));
+
+        count_of!("foo?bar", "foo/bar", None);
+        count_of!("foo*bar", "foo/bar", None);
     }
 }
