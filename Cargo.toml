@@ -21,7 +21,7 @@ name = "globcmp"
 path = "globcmp-cli/main.rs"
 
 [workspace]
-members = [ "globcmp-lib" ]
+members = [ "globcmp-lib", "pyglobcmp" ]
 
 [features]
 stack-safe = [ "globcmp-lib/stack-safe" ]

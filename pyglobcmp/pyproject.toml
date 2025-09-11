@@ -1,0 +1,17 @@
+[build-system]
+requires = ["maturin >= 1.0"]
+build-backend = "maturin"
+
+[project]
+name = "pyglobcmp"
+dynamic = ["version"]
+requires-python = ">=3.8"
+
+[tool.maturin]
+name = "pyglobcmp"
+version = "0.3.0"
+description = "Assess whether a file path is matched more closely by one glob pattern than another"
+license = "LGPL-3.0-only"
+urls = { repository = "https://github.com/gn0/globcmp/tree/main/pyglobcmp" }
+# python-source = "python"
+features = ["pyo3/extension-module"]
