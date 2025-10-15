@@ -6,7 +6,7 @@ const STACK_RED_ZONE: usize = 32 * 1024;
 #[cfg(feature = "stack-safe")]
 const STACK_GROW_SIZE: usize = 1024 * 1024;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 enum Token {
     Slash,
     Char(char),
@@ -412,7 +412,7 @@ where
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct Pattern {
     original: String,
     tokens: Vec<Token>,
