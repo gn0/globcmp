@@ -438,14 +438,15 @@ impl Pattern {
             )))
     }
 
-    /// Counts the number of characters in `path` that are either
+    /// Counts characters in `path` that `pattern` matches without `*`
+    /// or `**/`.
+    ///
+    /// Said differently, this method counts the number of characters in
+    /// `path` that are either
     ///
     /// 1. matched exactly (e.g., `a`),
     /// 2. matched by a character class (e.g., `[a-f]`), or
     /// 3. matched by a single-character wildcard (`?`)
-    ///
-    /// This means that it does not count characters that are matched by
-    /// `*` or `**`.
     ///
     /// Returns `None` if the pattern does not match `path`.
     ///
